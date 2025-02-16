@@ -1,0 +1,132 @@
+/* Modern styling with animations */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+
+/* General Styles */
+* {
+    font-family: 'Inter', sans-serif;
+}
+
+/* Welcome Header */
+.welcome-header {
+    text-align: center;
+    padding: 2rem 0;
+    animation: fadeIn 1s ease-in;
+}
+
+.welcome-header h1 {
+    font-size: 2.5rem;
+    color: #FF4B4B;
+    margin-bottom: 0.5rem;
+}
+
+.subtitle {
+    font-size: 1.2rem;
+    color: #FAFAFA;
+    opacity: 0.8;
+}
+
+/* Metric Cards */
+.metric-card {
+    background: linear-gradient(135deg, #1e2126 0%, #2d3339 100%);
+    border-radius: 10px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease;
+    animation: slideIn 0.5s ease-out;
+}
+
+.metric-card:hover {
+    transform: translateY(-5px);
+}
+
+/* Chart Container */
+.chart-container {
+    background: rgba(38, 39, 48, 0.8);
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin: 1rem 0;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    animation: fadeIn 1s ease-in;
+}
+
+/* Info Cards */
+.info-card {
+    background: linear-gradient(135deg, #2d3339 0%, #1e2126 100%);
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin: 1rem 0;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+    animation: slideUp 0.5s ease-out;
+}
+
+.info-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2);
+}
+
+.card-emoji {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(-20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Sidebar */
+.sidebar-header {
+    font-size: 1.5rem;
+    font-weight: 600;
+    padding: 1rem 0;
+    text-align: center;
+    color: #FF4B4B;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    margin-bottom: 2rem;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #1e2126;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #FF4B4B;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #ff6b6b;
+}
