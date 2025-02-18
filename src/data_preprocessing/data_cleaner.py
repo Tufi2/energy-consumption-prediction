@@ -1,22 +1,29 @@
-# src/data_preprocessing/data_cleaner.py
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 import logging
+from datetime import datetime
 
 class DataCleaner:
     """
+    A data cleaning utility for energy consumption prediction.
     Think of this as our data washing machine! 🧺
     It takes dirty data and makes it squeaky clean for our analysis.
     """
     
     def __init__(self):
         self.scaler = StandardScaler()
-        logging.basicConfig(level=logging.INFO)
+    # Configure logging to show messages in the terminal
+        logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[logging.StreamHandler()]
+    )
         self.logger = logging.getLogger(__name__)
 
     def remove_duplicates(self, df):
         """
+        Removes duplicate rows from the dataset.
         Like removing duplicate socks from your drawer!
         """
         initial_rows = len(df)
@@ -27,8 +34,8 @@ class DataCleaner:
 
     def handle_missing_values(self, df):
         """
+        Handles missing values in the dataset.
         Like filling in missing puzzle pieces! 🧩
-        We use different methods depending on what kind of data is missing.
         """
         # For numeric columns, use interpolation (like connecting the dots)
         numeric_columns = df.select_dtypes(include=[np.number]).columns
@@ -50,8 +57,8 @@ class DataCleaner:
 
     def remove_outliers(self, df, columns, method='iqr'):
         """
+        Removes outliers from the dataset.
         Like removing the weird data points that don't fit in! 
-        Just like finding the one sock that's not like the others 🧦
         """
         for column in columns:
             if method == 'iqr':
@@ -77,8 +84,8 @@ class DataCleaner:
 
     def normalize_data(self, df, columns):
         """
+        Normalizes numeric columns using StandardScaler.
         Like making sure all our numbers are playing on the same playground! 
-        Makes big numbers and small numbers play nice together 🎮
         """
         df_copy = df.copy()
         df_copy[columns] = self.scaler.fit_transform(df_copy[columns])
@@ -87,50 +94,79 @@ class DataCleaner:
 
     def validate_data(self, df):
         """
+        Validates the cleaned dataset.
         Like a quality check before sending the data to the next step!
-        Makes sure our data is good to go! ✅
         """
         validation_results = {
             'missing_values': df.isnull().sum().to_dict(),
             'data_types': df.dtypes.to_dict(),
             'row_count': len(df),
-            'column_count': len(df.columns)
+            'column_count': len(df.columns),
+            'negative_values': (df.select_dtypes(include=[np.number]) < 0).sum().to_dict()
         }
         
         self.logger.info("Data validation complete")
         return validation_results
 
+    def resample_time_series(self, df, time_column, freq='H'):
+        """
+        Resamples time-series data to a consistent frequency.
+        """
+        df[time_column] = pd.to_datetime(df[time_column])
+        df = df.set_index(time_column)
+        df = df.resample(freq).mean().reset_index()
+        self.logger.info(f"Resampled data to {freq} frequency")
+        return df
+
 def main():
     """
-    Let's test our data cleaner!
+    Main function to test the data cleaner.
     """
-    # Load sample data (you should replace this with your actual data)
     try:
-        df = pd.read_csv('data/raw/energy_consumption.csv')
+        print("Starting data cleaning process...")
+        
+        # Load raw data
+        raw_data_path = "D:/ProjectCQ/Energy-consumption-prediction/energy-consumption-prediction/data/raw/weather.csv"
+        print(f"Loading data from: {raw_data_path}")
+        df = pd.read_csv(raw_data_path)
+        print(f"Data loaded successfully. Shape: {df.shape}")
         
         # Create our data cleaner
+        print("Creating DataCleaner instance...")
         cleaner = DataCleaner()
         
         # Clean the data step by step
+        print("Removing duplicates...")
         df = cleaner.remove_duplicates(df)
+        
+        print("Handling missing values...")
         df = cleaner.handle_missing_values(df)
         
         # Remove outliers from numeric columns
         numeric_columns = df.select_dtypes(include=[np.number]).columns
+        print(f"Removing outliers from columns: {numeric_columns}")
         df = cleaner.remove_outliers(df, numeric_columns)
         
+        # Resample time-series data (if applicable)
+        if 'timestamp' in df.columns:
+            print("Resampling time-series data...")
+            df = cleaner.resample_time_series(df, time_column='timestamp')
+        
         # Normalize numeric columns
+        print("Normalizing numeric columns...")
         df = cleaner.normalize_data(df, numeric_columns)
         
         # Validate the cleaned data
+        print("Validating cleaned data...")
         validation_results = cleaner.validate_data(df)
+        print("Validation results:", validation_results)
         
         # Save the cleaned data
-        df.to_csv('data/processed/cleaned_energy_data.csv', index=False)
+        cleaned_data_path = "D:/ProjectCQ/Energy-consumption-prediction/energy-consumption-prediction/data/processed/cleaned_data.csv"
+        print(f"Saving cleaned data to: {cleaned_data_path}")
+        df.to_csv(cleaned_data_path, index=False)
+        
         print("Data cleaning completed successfully! 🎉")
         
     except Exception as e:
         print(f"An error occurred: {e}")
-
-if __name__ == "__main__":
-    main()

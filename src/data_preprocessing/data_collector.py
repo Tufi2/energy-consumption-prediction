@@ -1,98 +1,87 @@
-# src/data_preprocessing/data_collector.py
 import requests
 import pandas as pd
-from datetime import datetime, timedelta
-import logging
+from datetime import datetime
 
-class WeatherDataCollector:
+# Step 1: Define API Key and City
+API_KEY = "48ff73d2a21cb95acf08ca9a497a31ad"  # Replace with your OpenWeatherMap API key
+CITY = "New York"        # Replace with your target city (e.g., "New York")
+BASE_URL = "http://api.openweathermap.org/data/2.5/forecast"
+
+
+import os
+
+def save_weather_data(df, filepath):
     """
-    This is like our weather reporter! 🌤️
-    It goes out and gets weather information that might affect energy usage.
+    Saves weather data to a CSV file.
     """
-    def __init__(self, api_key):
-        self.api_key = api_key
-        self.base_url = "http://api.openweathermap.org/data/2.5/weather"
+    # Create the directory if it doesn't exist
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
     
-    def get_weather_data(self, city):
-        """
-        Like asking: "Hey, what's the weather like in this city?"
-        """
-        try:
-            params = {
-                'q': city,
-                'appid': self.api_key,
-                'units': 'metric'  # Get temperature in Celsius
-            }
-            response = requests.get(self.base_url, params=params)
-            data = response.json()
-            
-            weather_info = {
-                'temperature': data['main']['temp'],
-                'humidity': data['main']['humidity'],
-                'wind_speed': data['wind']['speed']
-            }
-            return weather_info
-        except Exception as e:
-            logging.error(f"Couldn't get weather data: {e}")
-            return None
+    # Save the DataFrame to CSV
+    df.to_csv(filepath, index=False)
+    print(f"Weather data saved to {filepath}")
 
-class EnergyDataCollector:
+# Step 2: Fetch Weather Data
+def fetch_weather_data(api_key, city):
     """
-    This is like our energy detective! 🔍
-    It collects information about how much energy people are using.
+    Fetches weather data from OpenWeatherMap API.
     """
-    def __init__(self, data_path):
-        self.data_path = data_path
+    params = {
+        "q": city,
+        "appid": api_key,
+        "units": "metric"  # Use "imperial" for Fahrenheit
+    }
+    response = requests.get(BASE_URL, params=params)
     
-    def collect_smart_meter_data(self, start_date, end_date):
-        """
-        Like reading a diary of energy usage from smart meters!
-        """
-        try:
-            # In real project, this would connect to smart meter API
-            # For now, we'll simulate data
-            dates = pd.date_range(start=start_date, end=end_date, freq='H')
-            energy_data = pd.DataFrame({
-                'timestamp': dates,
-                'energy_consumption': np.random.normal(loc=50, scale=10, size=len(dates))
-            })
-            return energy_data
-        except Exception as e:
-            logging.error(f"Error collecting smart meter data: {e}")
-            return None
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print(f"Error: Unable to fetch data (Status Code: {response.status_code})")
+        return None
 
+# Step 3: Parse and Format Data
+def parse_weather_data(weather_json):
+    """
+    Parses JSON weather data into a structured DataFrame.
+    """
+    weather_data = []
+    
+    for entry in weather_json["list"]:
+        timestamp = datetime.fromtimestamp(entry["dt"])
+        temperature = entry["main"]["temp"]
+        humidity = entry["main"]["humidity"]
+        wind_speed = entry["wind"]["speed"]
+        weather_description = entry["weather"][0]["description"]
+        
+        weather_data.append({
+            "timestamp": timestamp,
+            "temperature": temperature,
+            "humidity": humidity,
+            "wind_speed": wind_speed,
+            "weather_description": weather_description
+        })
+    
+    return pd.DataFrame(weather_data)
+
+# Step 4: Save Data to CSV
+def save_weather_data(df, filepath):
+    """
+    Saves weather data to a CSV file.
+    """
+    df.to_csv(filepath, index=False)
+    print(f"Weather data saved to {filepath}")
+
+# Step 5: Main Function
 def main():
-    """
-    This is like our data collection recipe!
-    It tells us step by step how to collect all the data we need.
-    """
-    # Setup logging to keep track of what's happening
-    logging.basicConfig(level=logging.INFO)
+    # Fetch weather data
+    weather_json = fetch_weather_data(API_KEY, CITY)
     
-    # Create our data collectors
-    weather_collector = WeatherDataCollector(api_key='48ff73d2a21cb95acf08ca9a497a31ad')
-    energy_collector = EnergyDataCollector(data_path='data/raw')
-    
-    # Collect data for the last 30 days
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=30)
-    
-    # Get energy data
-    logging.info("Collecting energy consumption data...")
-    energy_data = energy_collector.collect_smart_meter_data(start_date, end_date)
-    
-    # Get weather data for a specific city
-    logging.info("Collecting weather data...")
-    weather_data = weather_collector.get_weather_data('London')
-    
-    # Save the collected data
-    if energy_data is not None:
-        energy_data.to_csv('data/raw/energy_consumption.csv', index=False)
-        logging.info("Successfully saved energy data! 🎉")
-    
-    if weather_data is not None:
-        pd.DataFrame([weather_data]).to_csv('data/raw/weather_data.csv', index=False)
-        logging.info("Successfully saved weather data! 🎉")
+    if weather_json:
+        # Parse and format data
+        weather_df = parse_weather_data(weather_json)
+        
+        # Save data to CSV
+        save_weather_data(weather_df, "D:/ProjectCQ/Energy-consumption-prediction/energy-consumption-prediction/data/raw/weather.csv")
 
 if __name__ == "__main__":
     main()
