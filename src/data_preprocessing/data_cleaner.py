@@ -108,16 +108,27 @@ class DataCleaner:
         self.logger.info("Data validation complete")
         return validation_results
 
-    def resample_time_series(self, df, time_column, freq='H'):
+    def resample_time_series(self, df, time_column, freq='h'):  # Changed 'H' to 'h'
         """
         Resamples time-series data to a consistent frequency.
+        Handles both numeric and non-numeric columns appropriately.
         """
         df[time_column] = pd.to_datetime(df[time_column])
         df = df.set_index(time_column)
-        df = df.resample(freq).mean().reset_index()
+    
+        # Separate numeric and non-numeric columns
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        non_numeric_cols = df.select_dtypes(exclude=[np.number]).columns
+    
+        # Resample numeric columns with mean, non-numeric with first
+        df_numeric = df[numeric_cols].resample(freq).mean()
+        df_non_numeric = df[non_numeric_cols].resample(freq).first()
+    
+        # Combine the results
+        df = pd.concat([df_numeric, df_non_numeric], axis=1).reset_index()
+    
         self.logger.info(f"Resampled data to {freq} frequency")
         return df
-
 def main():
     """
     Main function to test the data cleaner.
@@ -170,3 +181,7 @@ def main():
         
     except Exception as e:
         print(f"An error occurred: {e}")
+        
+
+if __name__ == "__main__":
+    main()
