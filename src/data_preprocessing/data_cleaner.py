@@ -22,176 +22,129 @@ class DataCleaner:
         self.logger = logging.getLogger(__name__)
 
     def remove_duplicates(self, df):
-        """
-        Removes duplicate rows from the dataset.
-        Like removing duplicate socks from your drawer!
-        """
+        """Removes duplicate rows from the dataset."""
         initial_rows = len(df)
         df = df.drop_duplicates()
-        dropped_rows = initial_rows - len(df)
-        self.logger.info(f"Removed {dropped_rows} duplicate rows")
+        self.logger.info(f"Removed {initial_rows - len(df)} duplicate rows")
         return df
 
     def handle_missing_values(self, df):
-        """
-        Handles missing values in the dataset.
-        Like filling in missing puzzle pieces! 🧩
-        """
-        # Forward fill first to carry last known values forward
-        df = df.ffill()
+        """Robust missing value handling with multi-stage imputation"""
+        # First pass: temporal imputation
+        df = df.ffill().bfill()
         
-        # Then backfill any remaining missing values
-        df = df.bfill()
+        # Second pass: numeric mean imputation
+        numeric_cols = df.select_dtypes(include=np.number).columns
+        df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].mean())
         
-        # If any remaining missing values, fill with column mean for numeric columns
-        numeric_columns = df.select_dtypes(include=[np.number]).columns
-        df[numeric_columns] = df[numeric_columns].fillna(df[numeric_columns].mean())
+        # Third pass: categorical mode imputation
+        categorical_cols = df.select_dtypes(include='object').columns
+        for col in categorical_cols:
+            df[col] = df[col].fillna(df[col].mode()[0])
         
-        # For categorical columns, use mode (most frequent value)
-        categorical_columns = df.select_dtypes(include=['object']).columns
-        for col in categorical_columns:
-            if df[col].isnull().any():
-                df[col] = df[col].fillna(df[col].mode()[0])
-                
-        self.logger.info("Handled missing values in all columns")
+        # Final check: drop any remaining NaNs
+        df = df.dropna()
+        self.logger.info("Completed missing value handling")
         return df
 
     def remove_outliers(self, df, columns, method='iqr'):
-        """
-        Removes outliers from the dataset.
-        Like removing the weird data points that don't fit in! 
-        """
+        """Outlier handling with clipping instead of removal"""
         df_clean = df.copy()
-        for column in columns:
+        for col in columns:
             if method == 'iqr':
-                # Calculate IQR (Interquartile Range)
-                Q1 = df_clean[column].quantile(0.25)
-                Q3 = df_clean[column].quantile(0.75)
+                Q1 = df_clean[col].quantile(0.25)
+                Q3 = df_clean[col].quantile(0.75)
                 IQR = Q3 - Q1
-                
-                # Define outlier bounds
-                lower_bound = Q1 - 1.5 * IQR
-                upper_bound = Q3 + 1.5 * IQR
-                
-                # Clip outliers instead of removing them
-                df_clean[column] = df_clean[column].clip(lower_bound, upper_bound)
-                
-            elif method == 'zscore':
-                # Clip values that are more than 3 standard deviations away
-                z_scores = np.abs((df_clean[column] - df_clean[column].mean()) / df_clean[column].std())
-                df_clean[column] = df_clean[column].clip(
-                    df_clean[column].mean() - 3 * df_clean[column].std(),
-                    df_clean[column].mean() + 3 * df_clean[column].std()
-                )
-                
-        self.logger.info(f"Removed outliers using {method} method")
+                lower = Q1 - 1.5*IQR
+                upper = Q3 + 1.5*IQR
+                df_clean[col] = df_clean[col].clip(lower, upper)
+        self.logger.info(f"Clipped outliers using {method} method")
         return df_clean
 
+    def resample_time_series(self, df, time_column, freq='h'):
+        """Time-series resampling with gap filling"""
+        # Convert and set index
+        df[time_column] = pd.to_datetime(df[time_column])
+        df = df.set_index(time_column)
+        
+        # Create complete time index
+        full_index = pd.date_range(
+            start=df.index.min(),
+            end=df.index.max(),
+            freq=freq
+        )
+        df = df.reindex(full_index)
+        
+        # Separate numeric/categorical columns
+        numeric_cols = df.select_dtypes(include=np.number).columns
+        categorical_cols = df.select_dtypes(exclude=np.number).columns
+        
+        # Resample with different methods
+        df_num = df[numeric_cols].resample(freq).mean()
+        df_cat = df[categorical_cols].resample(freq).first()
+        
+        # Forward-fill gaps
+        df_num = df_num.ffill().bfill()
+        df_cat = df_cat.ffill().bfill()
+        
+        # Combine results
+        df = pd.concat([df_num, df_cat], axis=1).reset_index()
+        self.logger.info(f"Resampled to {freq} frequency with gap filling")
+        return df.rename(columns={'index': time_column})
+
     def normalize_data(self, df, columns):
-        """
-        Normalizes numeric columns using StandardScaler.
-        Like making sure all our numbers are playing on the same playground! 
-        """
+        """Normalization after data validation"""
         df_copy = df.copy()
         df_copy[columns] = self.scaler.fit_transform(df_copy[columns])
         self.logger.info(f"Normalized columns: {columns}")
         return df_copy
 
     def validate_data(self, df):
-        """
-        Validates the cleaned dataset.
-        Like a quality check before sending the data to the next step!
-        """
-        validation_results = {
-            'missing_values': df.isnull().sum().to_dict(),
-            'data_types': df.dtypes.to_dict(),
-            'row_count': len(df),
-            'column_count': len(df.columns),
-            'negative_values': (df.select_dtypes(include=[np.number]) < 0).sum().to_dict(),
-            'out_of_range_values': {
-                'humidity': (df['humidity'] < 0) | (df['humidity'] > 100).sum(),
-                'wind_speed': (df['wind_speed'] < 0).sum()
-            }
+        """Comprehensive data validation"""
+        report = {
+        'missing_values': df.isna().sum().to_dict(),
+        'negative_values': (df.select_dtypes(include=np.number) < 0).sum().to_dict(),
+        'inf_values': np.isinf(df.select_dtypes(include=np.number)).sum().to_dict(),  # Corrected line
+        'dtype_issues': {
+            col: str(df[col].map(type).unique()) 
+            for col in df.columns 
+            if df[col].map(type).nunique() > 1
         }
-        
-        self.logger.info("Data validation complete")
-        return validation_results
-
-    def resample_time_series(self, df, time_column, freq='h'):
-        """
-        Resamples time-series data to a consistent frequency.
-        Handles both numeric and non-numeric columns appropriately.
-        """
-        df[time_column] = pd.to_datetime(df[time_column])
-        df = df.set_index(time_column)
-        
-        # Separate numeric and non-numeric columns
-        numeric_cols = df.select_dtypes(include=[np.number]).columns
-        non_numeric_cols = df.select_dtypes(exclude=[np.number]).columns
-        
-        # Resample numeric columns with mean, non-numeric with first
-        df_numeric = df[numeric_cols].resample(freq).mean()
-        df_non_numeric = df[non_numeric_cols].resample(freq).first()
-        
-        # Combine the results
-        df = pd.concat([df_numeric, df_non_numeric], axis=1).reset_index()
-        
-        self.logger.info(f"Resampled data to {freq} frequency")
-        return df
+    }
+        self.logger.info("Data validation completed")
+        return report
 
 def main():
-    """
-    Main function to test the data cleaner.
-    """
+    """Updated workflow with proper execution order"""
     try:
         print("Starting data cleaning process...")
         
-        # Load raw data
-        raw_data_path = "D:/ProjectCQ/Energy-consumption-prediction/energy-consumption-prediction/data/raw/weather.csv"
-        print(f"Loading data from: {raw_data_path}")
-        df = pd.read_csv(raw_data_path)
-        print(f"Data loaded successfully. Shape: {df.shape}")
-        
-        # Create our data cleaner
-        print("Creating DataCleaner instance...")
+        # Initialize cleaner and load data
         cleaner = DataCleaner()
+        raw_path = "D:/ProjectCQ/Energy-consumption-prediction/energy-consumption-prediction/data/raw/weather.csv"
+        df = pd.read_csv(raw_path)
+        print(f"Loaded raw data: {df.shape}")
+
+        # Pipeline execution
+        df = (
+            df.pipe(cleaner.remove_duplicates)
+              .pipe(cleaner.remove_outliers, columns=df.select_dtypes(include=np.number).columns)
+              .pipe(cleaner.resample_time_series, time_column='timestamp', freq='h')
+              .pipe(cleaner.handle_missing_values)
+              .pipe(cleaner.normalize_data, columns=df.select_dtypes(include=np.number).columns)
+        )
+
+        # Final validation and save
+        validation = cleaner.validate_data(df)
+        print("Validation Report:", validation)
         
-        # Clean the data step by step
-        print("Removing duplicates...")
-        df = cleaner.remove_duplicates(df)
-        
-        print("Handling missing values...")
-        df = cleaner.handle_missing_values(df)
-        
-        # Remove outliers from numeric columns
-        numeric_columns = df.select_dtypes(include=[np.number]).columns
-        print(f"Removing outliers from columns: {numeric_columns}")
-        df = cleaner.remove_outliers(df, numeric_columns)
-        
-        
-        # Resample time-series data (if applicable)
-        if 'timestamp' in df.columns:
-            print("Resampling time-series data...")
-            df = cleaner.resample_time_series(df, time_column='timestamp')
-        
-        # Normalize numeric columns
-        print("Normalizing numeric columns...")
-        df = cleaner.normalize_data(df, numeric_columns)
-        
-        # Validate the cleaned data
-        print("Validating cleaned data...")
-        validation_results = cleaner.validate_data(df)
-        print("Validation results:", validation_results)
-        
-        # Save the cleaned data
-        cleaned_data_path = "D:/ProjectCQ/Energy-consumption-prediction/energy-consumption-prediction/data/processed/cleaned_data.csv"
-        print(f"Saving cleaned data to: {cleaned_data_path}")
-        df.to_csv(cleaned_data_path, index=False)
-        
-        print("Data cleaning completed successfully! 🎉")
-        
+        clean_path = "D:/ProjectCQ/Energy-consumption-prediction/energy-consumption-prediction/data/processed/cleaned_data.csv"
+        df.to_csv(clean_path, index=False)
+        print(f"Saved clean data: {clean_path}")
+
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"Critical error in pipeline: {str(e)}")
+        raise
 
 if __name__ == "__main__":
     main()
