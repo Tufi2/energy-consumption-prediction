@@ -13,12 +13,12 @@ class DataCleaner:
     
     def __init__(self):
         self.scaler = StandardScaler()
-    # Configure logging to show messages in the terminal
+        # Configure logging to show messages in the terminal
         logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[logging.StreamHandler()]
-    )
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[logging.StreamHandler()]
+        )
         self.logger = logging.getLogger(__name__)
 
     def remove_duplicates(self, df):
@@ -37,15 +37,16 @@ class DataCleaner:
         Handles missing values in the dataset.
         Like filling in missing puzzle pieces! 🧩
         """
-        # For numeric columns, use interpolation (like connecting the dots)
+        # Forward fill first to carry last known values forward
+        df = df.ffill()
+        
+        # Then backfill any remaining missing values
+        df = df.bfill()
+        
+        # If any remaining missing values, fill with column mean for numeric columns
         numeric_columns = df.select_dtypes(include=[np.number]).columns
-        for col in numeric_columns:
-            if df[col].isnull().any():
-                # First, try linear interpolation
-                df[col] = df[col].interpolate(method='linear')
-                # If any values are still missing (at edges), use forward/backward fill
-                df[col] = df[col].fillna(method='ffill').fillna(method='bfill')
-                
+        df[numeric_columns] = df[numeric_columns].fillna(df[numeric_columns].mean())
+        
         # For categorical columns, use mode (most frequent value)
         categorical_columns = df.select_dtypes(include=['object']).columns
         for col in categorical_columns:
@@ -60,27 +61,31 @@ class DataCleaner:
         Removes outliers from the dataset.
         Like removing the weird data points that don't fit in! 
         """
+        df_clean = df.copy()
         for column in columns:
             if method == 'iqr':
                 # Calculate IQR (Interquartile Range)
-                Q1 = df[column].quantile(0.25)
-                Q3 = df[column].quantile(0.75)
+                Q1 = df_clean[column].quantile(0.25)
+                Q3 = df_clean[column].quantile(0.75)
                 IQR = Q3 - Q1
                 
                 # Define outlier bounds
                 lower_bound = Q1 - 1.5 * IQR
                 upper_bound = Q3 + 1.5 * IQR
                 
-                # Remove outliers
-                df = df[(df[column] >= lower_bound) & (df[column] <= upper_bound)]
+                # Clip outliers instead of removing them
+                df_clean[column] = df_clean[column].clip(lower_bound, upper_bound)
                 
             elif method == 'zscore':
-                # Remove values that are more than 3 standard deviations away
-                z_scores = np.abs((df[column] - df[column].mean()) / df[column].std())
-                df = df[z_scores <= 3]
+                # Clip values that are more than 3 standard deviations away
+                z_scores = np.abs((df_clean[column] - df_clean[column].mean()) / df_clean[column].std())
+                df_clean[column] = df_clean[column].clip(
+                    df_clean[column].mean() - 3 * df_clean[column].std(),
+                    df_clean[column].mean() + 3 * df_clean[column].std()
+                )
                 
         self.logger.info(f"Removed outliers using {method} method")
-        return df
+        return df_clean
 
     def normalize_data(self, df, columns):
         """
@@ -102,33 +107,38 @@ class DataCleaner:
             'data_types': df.dtypes.to_dict(),
             'row_count': len(df),
             'column_count': len(df.columns),
-            'negative_values': (df.select_dtypes(include=[np.number]) < 0).sum().to_dict()
+            'negative_values': (df.select_dtypes(include=[np.number]) < 0).sum().to_dict(),
+            'out_of_range_values': {
+                'humidity': (df['humidity'] < 0) | (df['humidity'] > 100).sum(),
+                'wind_speed': (df['wind_speed'] < 0).sum()
+            }
         }
         
         self.logger.info("Data validation complete")
         return validation_results
 
-    def resample_time_series(self, df, time_column, freq='h'):  # Changed 'H' to 'h'
+    def resample_time_series(self, df, time_column, freq='h'):
         """
         Resamples time-series data to a consistent frequency.
         Handles both numeric and non-numeric columns appropriately.
         """
         df[time_column] = pd.to_datetime(df[time_column])
         df = df.set_index(time_column)
-    
+        
         # Separate numeric and non-numeric columns
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         non_numeric_cols = df.select_dtypes(exclude=[np.number]).columns
-    
+        
         # Resample numeric columns with mean, non-numeric with first
         df_numeric = df[numeric_cols].resample(freq).mean()
         df_non_numeric = df[non_numeric_cols].resample(freq).first()
-    
+        
         # Combine the results
         df = pd.concat([df_numeric, df_non_numeric], axis=1).reset_index()
-    
+        
         self.logger.info(f"Resampled data to {freq} frequency")
         return df
+
 def main():
     """
     Main function to test the data cleaner.
@@ -181,7 +191,6 @@ def main():
         
     except Exception as e:
         print(f"An error occurred: {e}")
-        
 
 if __name__ == "__main__":
     main()
