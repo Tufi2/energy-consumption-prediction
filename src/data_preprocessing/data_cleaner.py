@@ -168,6 +168,7 @@ def main():
         print(f"Removing outliers from columns: {numeric_columns}")
         df = cleaner.remove_outliers(df, numeric_columns)
         
+        
         # Resample time-series data (if applicable)
         if 'timestamp' in df.columns:
             print("Resampling time-series data...")
