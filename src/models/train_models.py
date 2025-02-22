@@ -20,7 +20,24 @@ def encode_categorical(df, categorical_columns):
     encoded_df = pd.DataFrame(encoded, columns=encoder.get_feature_names_out(categorical_columns))
     return pd.concat([df.drop(categorical_columns, axis=1), encoded_df], axis=1)
 
+from sklearn.model_selection import GridSearchCV
 
+def tune_hyperparameters(X_train, y_train):
+    """Perform hyperparameter tuning using Grid Search."""
+    param_grid = {
+        'n_estimators': [50, 100, 200],
+        'max_depth': [None, 10, 20],
+        'min_samples_split': [2, 5, 10]
+    }
+    grid_search = GridSearchCV(
+        estimator=RandomForestRegressor(random_state=42),
+        param_grid=param_grid,
+        cv=5,
+        scoring='neg_mean_squared_error',
+        n_jobs=-1
+    )
+    grid_search.fit(X_train, y_train)
+    return grid_search.best_estimator_
 
 def main():
     """Main function to train and evaluate models."""
@@ -60,6 +77,11 @@ def main():
         # Save model
         joblib.dump(model, MODEL_PATH)
         print(f"Model saved successfully to {MODEL_PATH}")
+        
+        # Replace the model training section with:
+        print("Tuning hyperparameters...")
+        model = tune_hyperparameters(X_train, y_train)
+        print("Best hyperparameters:", model.get_params())
         
     except Exception as e:
         print(f"An error occurred: {e}")
